@@ -367,15 +367,64 @@ public class JavaSwingPaintv4 extends JFrame {
 		}
 	}
 
-	private void aplicaOperatieArie(String operatie) {
-		panouDesenare.aplicaOperatieArie(operatie);
-	}
+        private void aplicaOperatieArie(String operatie) {
+                panouDesenare.aplicaOperatieArie(operatie);
+        }
 
-	private void activeazaDecupare() {
-		panouDesenare.activeazaModDecupare();
-	}
+        private void activeazaDecupare() {
+                panouDesenare.activeazaModDecupare();
+        }
 
-	class PanouDesenare extends JPanel {
+        private Arc2D.Double creeazaArcDinPuncte(Point p1, Point p2, int closureType) {
+                double x = Math.min(p1.x, p2.x);
+                double y = Math.min(p1.y, p2.y);
+                double width = Math.abs(p2.x - p1.x);
+                double height = Math.abs(p2.y - p1.y);
+
+                if (width == 0 || height == 0) {
+                        return new Arc2D.Double(x, y, width, height, 0, 0, closureType);
+                }
+
+                double centerX = x + width / 2.0;
+                double centerY = y + height / 2.0;
+                double radiusX = width / 2.0;
+                double radiusY = height / 2.0;
+
+                double normStartX = (p1.x - centerX) / radiusX;
+                double normStartY = (p1.y - centerY) / radiusY;
+                double normEndX = (p2.x - centerX) / radiusX;
+                double normEndY = (p2.y - centerY) / radiusY;
+
+                double startAngle = normalizeAngle(Math.toDegrees(Math.atan2(-normStartY, normStartX)));
+                double endAngle = normalizeAngle(Math.toDegrees(Math.atan2(-normEndY, normEndX)));
+
+                double extent = endAngle - startAngle;
+                double cross = normStartX * normEndY - normStartY * normEndX;
+
+                if (Math.abs(extent) < 1e-3 && Math.abs(cross) < 1e-6) {
+                        extent = 0;
+                } else if (cross >= 0) {
+                        while (extent <= 0) {
+                                extent += 360;
+                        }
+                } else {
+                        while (extent >= 0) {
+                                extent -= 360;
+                        }
+                }
+
+                return new Arc2D.Double(x, y, width, height, startAngle, extent, closureType);
+        }
+
+        private double normalizeAngle(double angle) {
+                double normalized = angle % 360.0;
+                if (normalized < 0) {
+                        normalized += 360.0;
+                }
+                return normalized;
+        }
+
+        class PanouDesenare extends JPanel {
 		private ArrayList<Forma> forme;
 		private Point punctStart;
 		private Point punctCurent;
@@ -980,36 +1029,36 @@ public class JavaSwingPaintv4 extends JFrame {
 			}
 		}
 
-		private void deseneazaPrevizualizare(Graphics2D g2d, String tip, Point p1, Point p2) {
-			int x = Math.min(p1.x, p2.x);
-			int y = Math.min(p1.y, p2.y);
-			int width = Math.abs(p2.x - p1.x);
-			int height = Math.abs(p2.y - p1.y);
+                private void deseneazaPrevizualizare(Graphics2D g2d, String tip, Point p1, Point p2) {
+                        int x = Math.min(p1.x, p2.x);
+                        int y = Math.min(p1.y, p2.y);
+                        int width = Math.abs(p2.x - p1.x);
+                        int height = Math.abs(p2.y - p1.y);
 
-			switch (tip) {
-			case "LINIE":
-				g2d.drawLine(p1.x, p1.y, p2.x, p2.y);
-				break;
-			case "DREPTUNGHI":
-				g2d.draw(new Rectangle2D.Double(x, y, width, height));
-				break;
-			case "DREPTUNGHI_ROTUND":
-				g2d.draw(new RoundRectangle2D.Double(x, y, width, height, 20, 20));
-				break;
-			case "ELIPSA":
-				g2d.draw(new Ellipse2D.Double(x, y, width, height));
-				break;
-			case "ARC_ELIPSA":
-				g2d.draw(new Arc2D.Double(x, y, width, height, 30, 120, Arc2D.OPEN));
-				break;
-			case "SEGMENT_ELIPSA":
-				g2d.draw(new Arc2D.Double(x, y, width, height, 30, 120, Arc2D.CHORD));
-				break;
-			case "SECTOR_ELIPSA":
-				g2d.draw(new Arc2D.Double(x, y, width, height, 30, 120, Arc2D.PIE));
-				break;
-			}
-		}
+                        switch (tip) {
+                        case "LINIE":
+                                g2d.drawLine(p1.x, p1.y, p2.x, p2.y);
+                                break;
+                        case "DREPTUNGHI":
+                                g2d.draw(new Rectangle2D.Double(x, y, width, height));
+                                break;
+                        case "DREPTUNGHI_ROTUND":
+                                g2d.draw(new RoundRectangle2D.Double(x, y, width, height, 20, 20));
+                                break;
+                        case "ELIPSA":
+                                g2d.draw(new Ellipse2D.Double(x, y, width, height));
+                                break;
+                        case "ARC_ELIPSA":
+                                g2d.draw(creeazaArcDinPuncte(p1, p2, Arc2D.OPEN));
+                                break;
+                        case "SEGMENT_ELIPSA":
+                                g2d.draw(creeazaArcDinPuncte(p1, p2, Arc2D.CHORD));
+                                break;
+                        case "SECTOR_ELIPSA":
+                                g2d.draw(creeazaArcDinPuncte(p1, p2, Arc2D.PIE));
+                                break;
+                        }
+                }
 	}
 
 	class Forma {
@@ -1123,21 +1172,21 @@ public class JavaSwingPaintv4 extends JFrame {
 					shape = new RoundRectangle2D.Double(x, y, width, height, 20, 20);
 					area = new Area(shape);
 					break;
-				case "ELIPSA":
-					shape = new Ellipse2D.Double(x, y, width, height);
-					area = new Area(shape);
-					break;
-				case "ARC_ELIPSA":
-					shape = new Arc2D.Double(x, y, width, height, 30, 120, Arc2D.OPEN);
-					break;
-				case "SEGMENT_ELIPSA":
-					shape = new Arc2D.Double(x, y, width, height, 30, 120, Arc2D.CHORD);
-					area = new Area(shape);
-					break;
-				case "SECTOR_ELIPSA":
-					shape = new Arc2D.Double(x, y, width, height, 30, 120, Arc2D.PIE);
-					area = new Area(shape);
-					break;
+                                case "ELIPSA":
+                                        shape = new Ellipse2D.Double(x, y, width, height);
+                                        area = new Area(shape);
+                                        break;
+                                case "ARC_ELIPSA":
+                                        shape = creeazaArcDinPuncte(punct1, punct2, Arc2D.OPEN);
+                                        break;
+                                case "SEGMENT_ELIPSA":
+                                        shape = creeazaArcDinPuncte(punct1, punct2, Arc2D.CHORD);
+                                        area = new Area(shape);
+                                        break;
+                                case "SECTOR_ELIPSA":
+                                        shape = creeazaArcDinPuncte(punct1, punct2, Arc2D.PIE);
+                                        area = new Area(shape);
+                                        break;
 				case "CURBA_PATRATA":
 					if (punctControl1 != null) {
 						GeneralPath path = new GeneralPath();
