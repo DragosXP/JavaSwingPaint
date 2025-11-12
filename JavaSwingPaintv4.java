@@ -381,34 +381,7 @@ public class JavaSwingPaintv4 extends JFrame {
                 int width = Math.abs(p2.x - p1.x);
                 int height = Math.abs(p2.y - p1.y);
 
-                if (width == 0 && height == 0) {
-                        return new Arc2D.Double(x, y, width, height, 0, 0, closureType);
-                }
-
-                double centerX = x + width / 2.0;
-                double centerY = y + height / 2.0;
-
-                double startAngle = calculeazaUnghiArc(centerX, centerY, p1.x, p1.y);
-                double endAngle = calculeazaUnghiArc(centerX, centerY, p2.x, p2.y);
-                double extent = endAngle - startAngle;
-
-                if (extent <= -360) {
-                        extent += 360;
-                } else if (extent >= 360) {
-                        extent -= 360;
-                }
-
-                return new Arc2D.Double(x, y, width, height, startAngle, extent, closureType);
-        }
-
-        private double calculeazaUnghiArc(double centerX, double centerY, double px, double py) {
-                double dx = px - centerX;
-                double dy = centerY - py; // coordonate Y cresc în jos, inversăm pentru a obține unghi CCW
-                double angle = Math.toDegrees(Math.atan2(dy, dx));
-                if (angle < 0) {
-                        angle += 360;
-                }
-                return angle;
+                return new Arc2D.Double(x, y, width, height, 0, 360, closureType);
         }
 
         class PanouDesenare extends JPanel {
