@@ -376,12 +376,52 @@ public class JavaSwingPaintv4 extends JFrame {
         }
 
         private Arc2D.Double creeazaArcDinPuncte(Point p1, Point p2, int closureType) {
-                int x = Math.min(p1.x, p2.x);
-                int y = Math.min(p1.y, p2.y);
-                int width = Math.abs(p2.x - p1.x);
-                int height = Math.abs(p2.y - p1.y);
+                double x = Math.min(p1.x, p2.x);
+                double y = Math.min(p1.y, p2.y);
+                double width = Math.abs(p2.x - p1.x);
+                double height = Math.abs(p2.y - p1.y);
 
-                return new Arc2D.Double(x, y, width, height, 0, 360, closureType);
+                if (width == 0 || height == 0) {
+                        return new Arc2D.Double(x, y, width, height, 0, 0, closureType);
+                }
+
+                double centerX = x + width / 2.0;
+                double centerY = y + height / 2.0;
+                double radiusX = width / 2.0;
+                double radiusY = height / 2.0;
+
+                double normStartX = (p1.x - centerX) / radiusX;
+                double normStartY = (p1.y - centerY) / radiusY;
+                double normEndX = (p2.x - centerX) / radiusX;
+                double normEndY = (p2.y - centerY) / radiusY;
+
+                double startAngle = normalizeAngle(Math.toDegrees(Math.atan2(-normStartY, normStartX)));
+                double endAngle = normalizeAngle(Math.toDegrees(Math.atan2(-normEndY, normEndX)));
+
+                double extent = endAngle - startAngle;
+                double cross = normStartX * normEndY - normStartY * normEndX;
+
+                if (Math.abs(extent) < 1e-3 && Math.abs(cross) < 1e-6) {
+                        extent = 0;
+                } else if (cross >= 0) {
+                        while (extent <= 0) {
+                                extent += 360;
+                        }
+                } else {
+                        while (extent >= 0) {
+                                extent -= 360;
+                        }
+                }
+
+                return new Arc2D.Double(x, y, width, height, startAngle, extent, closureType);
+        }
+
+        private double normalizeAngle(double angle) {
+                double normalized = angle % 360.0;
+                if (normalized < 0) {
+                        normalized += 360.0;
+                }
+                return normalized;
         }
 
         class PanouDesenare extends JPanel {
