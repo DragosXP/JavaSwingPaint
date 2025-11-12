@@ -10,6 +10,7 @@ import java.io.*;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.function.Consumer;
 
 public class JavaSwingPaintv4 extends JFrame {
 	private PanouDesenare panouDesenare;
@@ -123,6 +124,7 @@ public class JavaSwingPaintv4 extends JFrame {
 			float[] dash = parseDash(tfDash.getText());
 			float phase = parseFloatSafe(tfPhase.getText(), 0f);
 			panouDesenare.setDash(dash, phase);
+			panouDesenare.actualizeazaLinieStilSelectie(dash, phase);
 			panouDesenare.repaint();
 		});
 		toolBar.add(btnAplicaStil);
@@ -130,8 +132,11 @@ public class JavaSwingPaintv4 extends JFrame {
 		toolBar.add(new JLabel("Grosime:"));
 		spinnerGrosimeLinie = new JSpinner(new SpinnerNumberModel(2, 1, 20, 1));
 		spinnerGrosimeLinie.setPreferredSize(new Dimension(60, 25));
-		spinnerGrosimeLinie
-				.addChangeListener(e -> panouDesenare.setGrosimeLinie((Integer) spinnerGrosimeLinie.getValue()));
+		spinnerGrosimeLinie.addChangeListener(e -> {
+			int grosime = (Integer) spinnerGrosimeLinie.getValue();
+			panouDesenare.setGrosimeLinie(grosime);
+			panouDesenare.actualizeazaGrosimeLinieSelectie(grosime);
+		});
 		toolBar.add(spinnerGrosimeLinie);
 
 		toolBar.addSeparator();
@@ -142,6 +147,7 @@ public class JavaSwingPaintv4 extends JFrame {
 		comboUmplere.addActionListener(e -> {
 			int tip = comboUmplere.getSelectedIndex();
 			panouDesenare.setTipUmplere(tip);
+			panouDesenare.actualizeazaTipUmplereSelectie(tip);
 			if (tip == 5) {
 				selecteazaTexturaImagine();
 			}
@@ -352,23 +358,25 @@ public class JavaSwingPaintv4 extends JFrame {
 		}
 	}
 
-	private void selecteazaCuloare() {
-		Color culoareNoua = JColorChooser.showDialog(this, "Selectează Culoare", culoareCurenta);
-		if (culoareNoua != null) {
-			culoareCurenta = culoareNoua;
-			butonCuloare.setBackground(culoareCurenta);
-			panouDesenare.setCuloare(culoareCurenta);
-		}
-	}
+        private void selecteazaCuloare() {
+                Color culoareNoua = JColorChooser.showDialog(this, "Selectează Culoare", culoareCurenta);
+                if (culoareNoua != null) {
+                        culoareCurenta = culoareNoua;
+                        butonCuloare.setBackground(culoareCurenta);
+                        panouDesenare.setCuloare(culoareCurenta);
+                        panouDesenare.actualizeazaCuloareFormaSelectata(culoareCurenta);
+                }
+        }
 
-	private void selecteazaCuloareGradient() {
-		Color culoareNoua = JColorChooser.showDialog(this, "Selectează Culoare pentru Gradient", culoareGradient);
-		if (culoareNoua != null) {
-			culoareGradient = culoareNoua;
-			butonCuloareGradient.setBackground(culoareGradient);
-			panouDesenare.setCuloareGradient(culoareGradient);
-		}
-	}
+        private void selecteazaCuloareGradient() {
+                Color culoareNoua = JColorChooser.showDialog(this, "Selectează Culoare pentru Gradient", culoareGradient);
+                if (culoareNoua != null) {
+                        culoareGradient = culoareNoua;
+                        butonCuloareGradient.setBackground(culoareGradient);
+                        panouDesenare.setCuloareGradient(culoareGradient);
+                        panouDesenare.actualizeazaCuloareGradientFormaSelectata(culoareGradient);
+                }
+        }
 
 	private void selecteazaTexturaImagine() {
 		JFileChooser fileChooser = new JFileChooser();
@@ -378,12 +386,13 @@ public class JavaSwingPaintv4 extends JFrame {
 		fileChooser.setFileFilter(filter);
 
 		int result = fileChooser.showOpenDialog(this);
-		if (result == JFileChooser.APPROVE_OPTION) {
-			File fisier = fileChooser.getSelectedFile();
-			ImageIcon icon = new ImageIcon(fisier.getAbsolutePath());
-			panouDesenare.setTexturaImagine(icon.getImage());
-		}
-	}
+                if (result == JFileChooser.APPROVE_OPTION) {
+                        File fisier = fileChooser.getSelectedFile();
+                        ImageIcon icon = new ImageIcon(fisier.getAbsolutePath());
+                        panouDesenare.setTexturaImagine(icon.getImage());
+                        panouDesenare.actualizeazaTexturaSelectie(icon.getImage());
+                }
+        }
 
 	private void aplicaTranslatie() {
 		String input = JOptionPane.showInputDialog(this, "Introduceți translația (dx,dy):", "50,30");
@@ -529,6 +538,12 @@ public class JavaSwingPaintv4 extends JFrame {
 							}
 							repaint();
 							return;
+						}
+
+						if (formaSelectata != -1 || formaSelectata2 != -1) {
+							formaSelectata = -1;
+							formaSelectata2 = -1;
+							repaint();
 						}
 
 						if (primitivaCurenta.equals("POLIGON")) {
@@ -800,13 +815,62 @@ public class JavaSwingPaintv4 extends JFrame {
 			this.grosimeLinie = grosime;
 		}
 
-		public void setTipUmplere(int tip) {
-			this.tipUmplere = tip;
-		}
+                public void setTipUmplere(int tip) {
+                        this.tipUmplere = tip;
+                }
 
-		public void setTexturaImagine(Image img) {
-			this.texturaImagine = img;
-		}
+                public void setTexturaImagine(Image img) {
+                        this.texturaImagine = img;
+                }
+
+                public void actualizeazaCuloareFormaSelectata(Color culoare) {
+                        modificaFormeSelectate(forma -> forma.setCuloare(culoare));
+                }
+
+                public void actualizeazaCuloareGradientFormaSelectata(Color culoare) {
+                        modificaFormeSelectate(forma -> forma.setCuloareGradient(culoare));
+                }
+
+                public void actualizeazaGrosimeLinieSelectie(int grosime) {
+                        modificaFormeSelectate(forma -> forma.setGrosimeLinie(grosime));
+                }
+
+                public void actualizeazaLinieStilSelectie(float[] dash, float phase) {
+                        modificaFormeSelectate(forma -> forma.setDashPattern(dash, phase));
+                }
+
+                public void actualizeazaTipUmplereSelectie(int tip) {
+                        modificaFormeSelectate(forma -> forma.setTipUmplere(tip));
+                }
+
+                public void actualizeazaTexturaSelectie(Image textura) {
+                        modificaFormeSelectate(forma -> forma.setTexturaImagine(textura));
+                }
+
+                private void modificaFormeSelectate(Consumer<Forma> modificare) {
+                        Forma prima = null;
+                        Forma aDoua = null;
+
+                        if (formaSelectata >= 0 && formaSelectata < forme.size()) {
+                                prima = forme.get(formaSelectata);
+                        }
+                        if (formaSelectata2 >= 0 && formaSelectata2 < forme.size()) {
+                                aDoua = forme.get(formaSelectata2);
+                        }
+
+                        if (prima == null && aDoua == null) {
+                                return;
+                        }
+
+                        salveazaStarePentruUndo();
+                        if (prima != null) {
+                                modificare.accept(prima);
+                        }
+                        if (aDoua != null && aDoua != prima) {
+                                modificare.accept(aDoua);
+                        }
+                        repaint();
+                }
 
                 public void stergeTot() {
                         if (!forme.isEmpty() || zonaDecupare != null) {
@@ -1493,6 +1557,32 @@ public class JavaSwingPaintv4 extends JFrame {
 					break;
 				}
 			}
+		}
+
+
+		public void setCuloare(Color culoare) {
+			this.culoare = culoare;
+		}
+
+		public void setCuloareGradient(Color culoareGradient) {
+			this.culoareGradient = culoareGradient;
+		}
+
+		public void setGrosimeLinie(int grosimeLinie) {
+			this.grosimeLinie = grosimeLinie;
+		}
+
+		public void setTipUmplere(int tipUmplere) {
+			this.tipUmplere = tipUmplere;
+		}
+
+		public void setDashPattern(float[] dash, float dashPhase) {
+			this.dash = dash != null ? dash.clone() : null;
+			this.dashPhase = dashPhase;
+		}
+
+		public void setTexturaImagine(Image texturaImagine) {
+			this.texturaImagine = texturaImagine;
 		}
 
 		public void setImagine(Image imagine) {
