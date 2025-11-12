@@ -1564,7 +1564,7 @@ public class JavaSwingPaintv4 extends JFrame {
                         return serializata;
                 }
 
-                private static Path2D.Double creeazaPathDinShape(Shape forma) {
+                private Path2D.Double creeazaPathDinShape(Shape forma) {
                         if (forma == null) {
                                 return null;
                         }
@@ -1594,7 +1594,7 @@ public class JavaSwingPaintv4 extends JFrame {
                         return path;
                 }
 
-                private static byte[] imagineInOcteti(Image image) throws IOException {
+                private byte[] imagineInOcteti(Image image) throws IOException {
                         if (image == null) {
                                 return null;
                         }
@@ -1607,7 +1607,7 @@ public class JavaSwingPaintv4 extends JFrame {
                         return baos.toByteArray();
                 }
 
-                private static BufferedImage asBufferedImage(Image image) {
+                private BufferedImage asBufferedImage(Image image) {
                         if (image == null) {
                                 return null;
                         }
@@ -1626,7 +1626,7 @@ public class JavaSwingPaintv4 extends JFrame {
                         return bufferedImage;
                 }
 
-                private static Image imagineDinOcteti(byte[] data) throws IOException {
+                private Image imagineDinOcteti(byte[] data) throws IOException {
                         if (data == null || data.length == 0) {
                                 return null;
                         }
