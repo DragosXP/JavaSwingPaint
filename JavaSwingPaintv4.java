@@ -2,15 +2,20 @@ import javax.swing.*;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.*;
 import java.awt.event.*;
-import java.awt.geom.*;
 import java.awt.font.*;
+import java.awt.geom.*;
 import java.awt.image.*;
-import java.io.File;
+import javax.imageio.ImageIO;
+import java.io.*;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
+import java.util.function.Consumer;
 
 public class JavaSwingPaintv4 extends JFrame {
 	private PanouDesenare panouDesenare;
-	private JButton butonCuloare, butonCuloareGradient;
+        private JButton butonCuloare, butonCuloareGradient;
+        private JButton butonUndo, butonRedo;
 
 	private JComboBox<String> comboUmplere;
 
@@ -76,11 +81,11 @@ public class JavaSwingPaintv4 extends JFrame {
 		return toolBar;
 	}
 
-	private JToolBar createSecondToolBar() {
-		JToolBar toolBar = new JToolBar();
-		toolBar.setFloatable(false);
+        private JToolBar createSecondToolBar() {
+                JToolBar toolBar = new JToolBar();
+                toolBar.setFloatable(false);
 
-		toolBar.add(new JLabel("Culoare:"));
+                toolBar.add(new JLabel("Culoare:"));
 		butonCuloare = new JButton("  ");
 		butonCuloare.setBackground(culoareCurenta);
 		butonCuloare.setPreferredSize(new Dimension(40, 25));
@@ -119,6 +124,7 @@ public class JavaSwingPaintv4 extends JFrame {
 			float[] dash = parseDash(tfDash.getText());
 			float phase = parseFloatSafe(tfPhase.getText(), 0f);
 			panouDesenare.setDash(dash, phase);
+			panouDesenare.actualizeazaLinieStilSelectie(dash, phase);
 			panouDesenare.repaint();
 		});
 		toolBar.add(btnAplicaStil);
@@ -126,8 +132,11 @@ public class JavaSwingPaintv4 extends JFrame {
 		toolBar.add(new JLabel("Grosime:"));
 		spinnerGrosimeLinie = new JSpinner(new SpinnerNumberModel(2, 1, 20, 1));
 		spinnerGrosimeLinie.setPreferredSize(new Dimension(60, 25));
-		spinnerGrosimeLinie
-				.addChangeListener(e -> panouDesenare.setGrosimeLinie((Integer) spinnerGrosimeLinie.getValue()));
+		spinnerGrosimeLinie.addChangeListener(e -> {
+			int grosime = (Integer) spinnerGrosimeLinie.getValue();
+			panouDesenare.setGrosimeLinie(grosime);
+			panouDesenare.actualizeazaGrosimeLinieSelectie(grosime);
+		});
 		toolBar.add(spinnerGrosimeLinie);
 
 		toolBar.addSeparator();
@@ -138,6 +147,7 @@ public class JavaSwingPaintv4 extends JFrame {
 		comboUmplere.addActionListener(e -> {
 			int tip = comboUmplere.getSelectedIndex();
 			panouDesenare.setTipUmplere(tip);
+			panouDesenare.actualizeazaTipUmplereSelectie(tip);
 			if (tip == 5) {
 				selecteazaTexturaImagine();
 			}
@@ -146,12 +156,86 @@ public class JavaSwingPaintv4 extends JFrame {
 
 		toolBar.addSeparator();
 
-		JButton butonSterge = new JButton("Șterge Tot");
-		butonSterge.addActionListener(e -> panouDesenare.stergeTot());
-		toolBar.add(butonSterge);
+                JButton butonSterge = new JButton("Șterge Tot");
+                butonSterge.addActionListener(e -> panouDesenare.stergeTot());
+                toolBar.add(butonSterge);
 
-		return toolBar;
-	}
+                toolBar.addSeparator();
+
+                butonUndo = new JButton("Undo");
+                butonUndo.addActionListener(e -> panouDesenare.undo());
+                toolBar.add(butonUndo);
+
+                butonRedo = new JButton("Redo");
+                butonRedo.addActionListener(e -> panouDesenare.redo());
+                toolBar.add(butonRedo);
+
+                toolBar.addSeparator();
+
+                JButton butonSalveaza = new JButton("Salvează");
+                butonSalveaza.addActionListener(e -> salveazaDesen());
+                toolBar.add(butonSalveaza);
+
+                JButton butonIncarca = new JButton("Încarcă");
+                butonIncarca.addActionListener(e -> incarcaDesen());
+                toolBar.add(butonIncarca);
+
+                actualizeazaButoaneUndoRedo();
+
+                return toolBar;
+        }
+
+        private void actualizeazaButoaneUndoRedo() {
+                if (butonUndo != null) {
+                        butonUndo.setEnabled(panouDesenare != null && panouDesenare.canUndo());
+                }
+                if (butonRedo != null) {
+                        butonRedo.setEnabled(panouDesenare != null && panouDesenare.canRedo());
+                }
+        }
+
+        private void salveazaDesen() {
+                JFileChooser fileChooser = new JFileChooser();
+                fileChooser.setCurrentDirectory(new File(System.getProperty("user.home")));
+                fileChooser.setFileFilter(new FileNameExtensionFilter("Desene (*.ser)", "ser"));
+
+                int result = fileChooser.showSaveDialog(this);
+                if (result == JFileChooser.APPROVE_OPTION) {
+                        File fisier = fileChooser.getSelectedFile();
+                        if (!fisier.getName().toLowerCase().endsWith(".ser")) {
+                                fisier = new File(fisier.getParentFile(), fisier.getName() + ".ser");
+                        }
+                        try {
+                                panouDesenare.salveazaInFisier(fisier);
+                                JOptionPane.showMessageDialog(this, "Desen salvat cu succes.");
+                        } catch (IOException ex) {
+                                JOptionPane.showMessageDialog(this,
+                                                "Nu s-a putut salva desenul: " + ex.getMessage(),
+                                                "Eroare", JOptionPane.ERROR_MESSAGE);
+                        }
+                }
+        }
+
+        private void incarcaDesen() {
+                JFileChooser fileChooser = new JFileChooser();
+                fileChooser.setCurrentDirectory(new File(System.getProperty("user.home")));
+                fileChooser.setFileFilter(new FileNameExtensionFilter("Desene (*.ser)", "ser"));
+
+                int result = fileChooser.showOpenDialog(this);
+                if (result == JFileChooser.APPROVE_OPTION) {
+                        File fisier = fileChooser.getSelectedFile();
+                        try {
+                                panouDesenare.incarcaDinFisier(fisier);
+                                actualizeazaButoaneUndoRedo();
+                                repaint();
+                                JOptionPane.showMessageDialog(this, "Desen încărcat cu succes.");
+                        } catch (IOException | ClassNotFoundException ex) {
+                                JOptionPane.showMessageDialog(this,
+                                                "Nu s-a putut încărca desenul: " + ex.getMessage(),
+                                                "Eroare", JOptionPane.ERROR_MESSAGE);
+                        }
+                }
+        }
 
 	private JPanel createOperationsPanel() {
 		JPanel panel = new JPanel();
@@ -274,23 +358,25 @@ public class JavaSwingPaintv4 extends JFrame {
 		}
 	}
 
-	private void selecteazaCuloare() {
-		Color culoareNoua = JColorChooser.showDialog(this, "Selectează Culoare", culoareCurenta);
-		if (culoareNoua != null) {
-			culoareCurenta = culoareNoua;
-			butonCuloare.setBackground(culoareCurenta);
-			panouDesenare.setCuloare(culoareCurenta);
-		}
-	}
+        private void selecteazaCuloare() {
+                Color culoareNoua = JColorChooser.showDialog(this, "Selectează Culoare", culoareCurenta);
+                if (culoareNoua != null) {
+                        culoareCurenta = culoareNoua;
+                        butonCuloare.setBackground(culoareCurenta);
+                        panouDesenare.setCuloare(culoareCurenta);
+                        panouDesenare.actualizeazaCuloareFormaSelectata(culoareCurenta);
+                }
+        }
 
-	private void selecteazaCuloareGradient() {
-		Color culoareNoua = JColorChooser.showDialog(this, "Selectează Culoare pentru Gradient", culoareGradient);
-		if (culoareNoua != null) {
-			culoareGradient = culoareNoua;
-			butonCuloareGradient.setBackground(culoareGradient);
-			panouDesenare.setCuloareGradient(culoareGradient);
-		}
-	}
+        private void selecteazaCuloareGradient() {
+                Color culoareNoua = JColorChooser.showDialog(this, "Selectează Culoare pentru Gradient", culoareGradient);
+                if (culoareNoua != null) {
+                        culoareGradient = culoareNoua;
+                        butonCuloareGradient.setBackground(culoareGradient);
+                        panouDesenare.setCuloareGradient(culoareGradient);
+                        panouDesenare.actualizeazaCuloareGradientFormaSelectata(culoareGradient);
+                }
+        }
 
 	private void selecteazaTexturaImagine() {
 		JFileChooser fileChooser = new JFileChooser();
@@ -300,12 +386,13 @@ public class JavaSwingPaintv4 extends JFrame {
 		fileChooser.setFileFilter(filter);
 
 		int result = fileChooser.showOpenDialog(this);
-		if (result == JFileChooser.APPROVE_OPTION) {
-			File fisier = fileChooser.getSelectedFile();
-			ImageIcon icon = new ImageIcon(fisier.getAbsolutePath());
-			panouDesenare.setTexturaImagine(icon.getImage());
-		}
-	}
+                if (result == JFileChooser.APPROVE_OPTION) {
+                        File fisier = fileChooser.getSelectedFile();
+                        ImageIcon icon = new ImageIcon(fisier.getAbsolutePath());
+                        panouDesenare.setTexturaImagine(icon.getImage());
+                        panouDesenare.actualizeazaTexturaSelectie(icon.getImage());
+                }
+        }
 
 	private void aplicaTranslatie() {
 		String input = JOptionPane.showInputDialog(this, "Introduceți translația (dx,dy):", "50,30");
@@ -391,23 +478,29 @@ public class JavaSwingPaintv4 extends JFrame {
 		private int grosimeLinie = 2;
 		private int tipUmplere = 0;
 		private Image texturaImagine;
-		private int formaSelectata = -1;
-		private int formaSelectata2 = -1;
-		private boolean modDecupare = false;
-		private Shape zonaDecupare = null;
-		private int etapaCurba = 0;
+                private int formaSelectata = -1;
+                private int formaSelectata2 = -1;
+                private boolean modDecupare = false;
+                private Shape zonaDecupare = null;
+                private int etapaCurba = 0;
 
-		public PanouDesenare() {
-			forme = new ArrayList<>();
-			punctePoligon = new ArrayList<>();
-			primitivaCurenta = "LINIE";
-			culoareCurenta = Color.BLACK;
-			culoareGradient = Color.WHITE;
-			fontCurent = new Font("SansSerif", Font.PLAIN, 24);
+                private Deque<StarePanou> undoStack;
+                private Deque<StarePanou> redoStack;
 
-			setBackground(Color.WHITE);
+                public PanouDesenare() {
+                        forme = new ArrayList<>();
+                        punctePoligon = new ArrayList<>();
+                        primitivaCurenta = "LINIE";
+                        culoareCurenta = Color.BLACK;
+                        culoareGradient = Color.WHITE;
+                        fontCurent = new Font("SansSerif", Font.PLAIN, 24);
 
-			addMouseListener(new MouseAdapter() {
+                        undoStack = new ArrayDeque<>();
+                        redoStack = new ArrayDeque<>();
+
+                        setBackground(Color.WHITE);
+
+                        addMouseListener(new MouseAdapter() {
 				public void mousePressed(MouseEvent e) {
 					if (modDecupare) {
 						punctStart = e.getPoint();
@@ -447,6 +540,12 @@ public class JavaSwingPaintv4 extends JFrame {
 							return;
 						}
 
+						if (formaSelectata != -1 || formaSelectata2 != -1) {
+							formaSelectata = -1;
+							formaSelectata2 = -1;
+							repaint();
+						}
+
 						if (primitivaCurenta.equals("POLIGON")) {
 							punctePoligon.add(e.getPoint());
 							repaint();
@@ -457,15 +556,16 @@ public class JavaSwingPaintv4 extends JFrame {
 							} else if (etapaCurba == 1) {
 								punctControl1 = e.getPoint();
 								etapaCurba = 2;
-							} else if (etapaCurba == 2) {
-								Forma forma = new Forma(primitivaCurenta, culoareCurenta, culoareGradient, punctStart,
-										e.getPoint(), punctControl1, null, fontCurent, dash, dashPhase, grosimeLinie,
-										tipUmplere, texturaImagine);
-								forme.add(forma);
-								etapaCurba = 0;
-								punctStart = null;
-								punctControl1 = null;
-								repaint();
+                                                        } else if (etapaCurba == 2) {
+                                                                Forma forma = new Forma(primitivaCurenta, culoareCurenta, culoareGradient, punctStart,
+                                                                                e.getPoint(), punctControl1, null, fontCurent, dash, dashPhase, grosimeLinie,
+                                                                                tipUmplere, texturaImagine);
+                                                                salveazaStarePentruUndo();
+                                                                forme.add(forma);
+                                                                etapaCurba = 0;
+                                                                punctStart = null;
+                                                                punctControl1 = null;
+                                                                repaint();
 							}
 						} else if (primitivaCurenta.equals("CURBA_CUBICA")) {
 							if (etapaCurba == 0) {
@@ -477,15 +577,16 @@ public class JavaSwingPaintv4 extends JFrame {
 							} else if (etapaCurba == 2) {
 								punctControl2 = e.getPoint();
 								etapaCurba = 3;
-							} else if (etapaCurba == 3) {
-								Forma forma = new Forma(primitivaCurenta, culoareCurenta, culoareGradient, punctStart,
-										e.getPoint(), punctControl1, punctControl2, fontCurent, dash, dashPhase,
-										grosimeLinie, tipUmplere, texturaImagine);
-								forme.add(forma);
-								etapaCurba = 0;
-								punctStart = null;
-								punctControl1 = null;
-								punctControl2 = null;
+                                                        } else if (etapaCurba == 3) {
+                                                                Forma forma = new Forma(primitivaCurenta, culoareCurenta, culoareGradient, punctStart,
+                                                                                e.getPoint(), punctControl1, punctControl2, fontCurent, dash, dashPhase,
+                                                                                grosimeLinie, tipUmplere, texturaImagine);
+                                                                salveazaStarePentruUndo();
+                                                                forme.add(forma);
+                                                                etapaCurba = 0;
+                                                                punctStart = null;
+                                                                punctControl1 = null;
+                                                                punctControl2 = null;
 								repaint();
 							}
 						} else if (primitivaCurenta.equals("IMAGINE")) {
@@ -501,12 +602,13 @@ public class JavaSwingPaintv4 extends JFrame {
 				}
 
 				public void mouseReleased(MouseEvent e) {
-					if (modDecupare && punctStart != null && punctCurent != null) {
-						int x = Math.min(punctStart.x, punctCurent.x);
-						int y = Math.min(punctStart.y, punctCurent.y);
-						int width = Math.abs(punctCurent.x - punctStart.x);
-						int height = Math.abs(punctCurent.y - punctStart.y);
-						zonaDecupare = new Rectangle2D.Double(x, y, width, height);
+                                        if (modDecupare && punctStart != null && punctCurent != null) {
+                                                salveazaStarePentruUndo();
+                                                int x = Math.min(punctStart.x, punctCurent.x);
+                                                int y = Math.min(punctStart.y, punctCurent.y);
+                                                int width = Math.abs(punctCurent.x - punctStart.x);
+                                                int height = Math.abs(punctCurent.y - punctStart.y);
+                                                zonaDecupare = new Rectangle2D.Double(x, y, width, height);
 						modDecupare = false;
 						punctStart = null;
 						punctCurent = null;
@@ -518,35 +620,168 @@ public class JavaSwingPaintv4 extends JFrame {
 							&& !primitivaCurenta.equals("CURBA_PATRATA") && !primitivaCurenta.equals("CURBA_CUBICA")
 							&& !primitivaCurenta.equals("IMAGINE") && !primitivaCurenta.equals("TEXT")
 							&& !primitivaCurenta.equals("TEXT_FORMA")) {
-						if (punctStart != null) {
-							Forma forma = new Forma(primitivaCurenta, culoareCurenta, culoareGradient, punctStart,
-									e.getPoint(), null, null, fontCurent, dash, dashPhase, grosimeLinie, tipUmplere,
-									texturaImagine);
-							forme.add(forma);
-							punctStart = null;
-							punctCurent = null;
-							repaint();
-						}
+                                                if (punctStart != null) {
+                                                        Forma forma = new Forma(primitivaCurenta, culoareCurenta, culoareGradient, punctStart,
+                                                                        e.getPoint(), null, null, fontCurent, dash, dashPhase, grosimeLinie, tipUmplere,
+                                                                        texturaImagine);
+                                                        salveazaStarePentruUndo();
+                                                        forme.add(forma);
+                                                        punctStart = null;
+                                                        punctCurent = null;
+                                                        repaint();
+                                                }
 					}
 				}
 			});
 
-			addMouseMotionListener(new MouseMotionAdapter() {
-				public void mouseDragged(MouseEvent e) {
-					if (!primitivaCurenta.equals("POLIGON") && !primitivaCurenta.equals("CURBA_PATRATA")
-							&& !primitivaCurenta.equals("CURBA_CUBICA") && !primitivaCurenta.equals("IMAGINE")
-							&& !primitivaCurenta.equals("TEXT") && !primitivaCurenta.equals("TEXT_FORMA")) {
-						punctCurent = e.getPoint();
-						repaint();
-					}
-				}
-			});
-		}
+                        addMouseMotionListener(new MouseMotionAdapter() {
+                                public void mouseDragged(MouseEvent e) {
+                                        if (!primitivaCurenta.equals("POLIGON") && !primitivaCurenta.equals("CURBA_PATRATA")
+                                                        && !primitivaCurenta.equals("CURBA_CUBICA") && !primitivaCurenta.equals("IMAGINE")
+                                                        && !primitivaCurenta.equals("TEXT") && !primitivaCurenta.equals("TEXT_FORMA")) {
+                                                punctCurent = e.getPoint();
+                                                repaint();
+                                        }
+                                }
+                        });
+                }
 
-		public void setDash(float[] dash, float phase) {
-			this.dash = dash;
-			this.dashPhase = phase;
-		}
+                private class StarePanou {
+                        private final ArrayList<Forma> forme;
+                        private final Shape zonaDecupare;
+
+                        private StarePanou(ArrayList<Forma> forme, Shape zonaDecupare) {
+                                this.forme = forme;
+                                this.zonaDecupare = zonaDecupare;
+                        }
+                }
+
+                private void salveazaStarePentruUndo() {
+                        undoStack.push(creeazaStareCurenta());
+                        redoStack.clear();
+                        JavaSwingPaintv4.this.actualizeazaButoaneUndoRedo();
+                }
+
+                private StarePanou creeazaStareCurenta() {
+                        ArrayList<Forma> copieForme = copiazaForme(forme);
+                        Shape copieZona = copieZona(zonaDecupare);
+                        return new StarePanou(copieForme, copieZona);
+                }
+
+                private ArrayList<Forma> copiazaForme(ArrayList<Forma> sursa) {
+                        ArrayList<Forma> copie = new ArrayList<>();
+                        for (Forma forma : sursa) {
+                                copie.add(new Forma(forma));
+                        }
+                        return copie;
+                }
+
+                private Shape copieZona(Shape zona) {
+                        if (zona instanceof Rectangle2D) {
+                                Rectangle2D rect = (Rectangle2D) zona;
+                                return new Rectangle2D.Double(rect.getX(), rect.getY(), rect.getWidth(), rect.getHeight());
+                        }
+                        return null;
+                }
+
+                private void restaureazaStare(StarePanou stare) {
+                        forme = copiazaForme(stare.forme);
+                        zonaDecupare = copieZona(stare.zonaDecupare);
+                        punctePoligon.clear();
+                        punctStart = null;
+                        punctCurent = null;
+                        punctControl1 = null;
+                        punctControl2 = null;
+                        etapaCurba = 0;
+                        formaSelectata = -1;
+                        formaSelectata2 = -1;
+                        repaint();
+                }
+
+                public boolean canUndo() {
+                        return !undoStack.isEmpty();
+                }
+
+                public boolean canRedo() {
+                        return !redoStack.isEmpty();
+                }
+
+                public boolean undo() {
+                        if (undoStack.isEmpty()) {
+                                return false;
+                        }
+                        redoStack.push(creeazaStareCurenta());
+                        StarePanou stareAnterioara = undoStack.pop();
+                        restaureazaStare(stareAnterioara);
+                        JavaSwingPaintv4.this.actualizeazaButoaneUndoRedo();
+                        return true;
+                }
+
+                public boolean redo() {
+                        if (redoStack.isEmpty()) {
+                                return false;
+                        }
+                        undoStack.push(creeazaStareCurenta());
+                        StarePanou stareUrmatoare = redoStack.pop();
+                        restaureazaStare(stareUrmatoare);
+                        JavaSwingPaintv4.this.actualizeazaButoaneUndoRedo();
+                        return true;
+                }
+
+                public void salveazaInFisier(File fisier) throws IOException {
+                        DesenSerializat desen = new DesenSerializat();
+                        desen.forme = new ArrayList<>();
+                        for (Forma forma : forme) {
+                                desen.forme.add(forma.toSerializat());
+                        }
+                        desen.zonaDecupare = RectangleData.fromShape(zonaDecupare);
+
+                        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(fisier))) {
+                                oos.writeObject(desen);
+                        }
+                }
+
+                public void incarcaDinFisier(File fisier) throws IOException, ClassNotFoundException {
+                        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(fisier))) {
+                                Object obj = ois.readObject();
+                                if (!(obj instanceof DesenSerializat)) {
+                                        throw new IOException("Fișier invalid");
+                                }
+                                DesenSerializat desen = (DesenSerializat) obj;
+                                ArrayList<Forma> formeNoi = new ArrayList<>();
+                                if (desen.forme != null) {
+                                        for (FormaSerializata serializata : desen.forme) {
+                                                formeNoi.add(new Forma(serializata));
+                                        }
+                                }
+                                salveazaStareCurentaPentruUndoLaIncarcare();
+                                forme = formeNoi;
+                                zonaDecupare = desen.zonaDecupare != null ? desen.zonaDecupare.toShape() : null;
+                                punctePoligon.clear();
+                                punctStart = null;
+                                punctCurent = null;
+                                punctControl1 = null;
+                                punctControl2 = null;
+                                etapaCurba = 0;
+                                formaSelectata = -1;
+                                formaSelectata2 = -1;
+                                redoStack.clear();
+                                repaint();
+                                JavaSwingPaintv4.this.actualizeazaButoaneUndoRedo();
+                        }
+                }
+
+                private void salveazaStareCurentaPentruUndoLaIncarcare() {
+                        if (!forme.isEmpty() || zonaDecupare != null) {
+                                undoStack.push(creeazaStareCurenta());
+                                redoStack.clear();
+                        }
+                }
+
+                public void setDash(float[] dash, float phase) {
+                        this.dash = dash;
+                        this.dashPhase = phase;
+                }
 
 		private Stroke creeazaStrokeCustom() {
 			if (dash != null && dash.length > 0) {
@@ -580,22 +815,74 @@ public class JavaSwingPaintv4 extends JFrame {
 			this.grosimeLinie = grosime;
 		}
 
-		public void setTipUmplere(int tip) {
-			this.tipUmplere = tip;
-		}
+                public void setTipUmplere(int tip) {
+                        this.tipUmplere = tip;
+                }
 
-		public void setTexturaImagine(Image img) {
-			this.texturaImagine = img;
-		}
+                public void setTexturaImagine(Image img) {
+                        this.texturaImagine = img;
+                }
 
-		public void stergeTot() {
-			forme.clear();
-			punctePoligon.clear();
-			formaSelectata = -1;
-			formaSelectata2 = -1;
-			zonaDecupare = null;
-			repaint();
-		}
+                public void actualizeazaCuloareFormaSelectata(Color culoare) {
+                        modificaFormeSelectate(forma -> forma.setCuloare(culoare));
+                }
+
+                public void actualizeazaCuloareGradientFormaSelectata(Color culoare) {
+                        modificaFormeSelectate(forma -> forma.setCuloareGradient(culoare));
+                }
+
+                public void actualizeazaGrosimeLinieSelectie(int grosime) {
+                        modificaFormeSelectate(forma -> forma.setGrosimeLinie(grosime));
+                }
+
+                public void actualizeazaLinieStilSelectie(float[] dash, float phase) {
+                        modificaFormeSelectate(forma -> forma.setDashPattern(dash, phase));
+                }
+
+                public void actualizeazaTipUmplereSelectie(int tip) {
+                        modificaFormeSelectate(forma -> forma.setTipUmplere(tip));
+                }
+
+                public void actualizeazaTexturaSelectie(Image textura) {
+                        modificaFormeSelectate(forma -> forma.setTexturaImagine(textura));
+                }
+
+                private void modificaFormeSelectate(Consumer<Forma> modificare) {
+                        Forma prima = null;
+                        Forma aDoua = null;
+
+                        if (formaSelectata >= 0 && formaSelectata < forme.size()) {
+                                prima = forme.get(formaSelectata);
+                        }
+                        if (formaSelectata2 >= 0 && formaSelectata2 < forme.size()) {
+                                aDoua = forme.get(formaSelectata2);
+                        }
+
+                        if (prima == null && aDoua == null) {
+                                return;
+                        }
+
+                        salveazaStarePentruUndo();
+                        if (prima != null) {
+                                modificare.accept(prima);
+                        }
+                        if (aDoua != null && aDoua != prima) {
+                                modificare.accept(aDoua);
+                        }
+                        repaint();
+                }
+
+                public void stergeTot() {
+                        if (!forme.isEmpty() || zonaDecupare != null) {
+                                salveazaStarePentruUndo();
+                        }
+                        forme.clear();
+                        punctePoligon.clear();
+                        formaSelectata = -1;
+                        formaSelectata2 = -1;
+                        zonaDecupare = null;
+                        repaint();
+                }
 
 		public void activeazaModDecupare() {
 			modDecupare = true;
@@ -603,40 +890,44 @@ public class JavaSwingPaintv4 extends JFrame {
 					"Mod decupare activat. Desenați un dreptunghi pentru zona de decupare.");
 		}
 
-		public void aplicaTransformareFormaSelectata(AffineTransform transform) {
-			if (formaSelectata >= 0 && formaSelectata < forme.size()) {
-				forme.get(formaSelectata).aplicaTransformare(transform);
-				repaint();
-			} else {
-				JOptionPane.showMessageDialog(JavaSwingPaintv4.this, "Selectați mai întâi o formă dând click pe ea!");
-			}
+                public void aplicaTransformareFormaSelectata(AffineTransform transform) {
+                        if (formaSelectata >= 0 && formaSelectata < forme.size()) {
+                                salveazaStarePentruUndo();
+                                forme.get(formaSelectata).aplicaTransformare(transform);
+                                repaint();
+                        } else {
+                                JOptionPane.showMessageDialog(JavaSwingPaintv4.this, "Selectați mai întâi o formă dând click pe ea!");
+                        }
 		}
 
-		public void aplicaRotatieFormaSelectata(double unghi) {
-			if (formaSelectata >= 0 && formaSelectata < forme.size()) {
-				forme.get(formaSelectata).aplicaRotatie(unghi);
-				repaint();
-			} else {
-				JOptionPane.showMessageDialog(JavaSwingPaintv4.this, "Selectați mai întâi o formă dând click pe ea!");
-			}
+                public void aplicaRotatieFormaSelectata(double unghi) {
+                        if (formaSelectata >= 0 && formaSelectata < forme.size()) {
+                                salveazaStarePentruUndo();
+                                forme.get(formaSelectata).aplicaRotatie(unghi);
+                                repaint();
+                        } else {
+                                JOptionPane.showMessageDialog(JavaSwingPaintv4.this, "Selectați mai întâi o formă dând click pe ea!");
+                        }
 		}
 
-		public void aplicaScalareFormaSelectata(double sx, double sy) {
-			if (formaSelectata >= 0 && formaSelectata < forme.size()) {
-				forme.get(formaSelectata).aplicaScalare(sx, sy);
-				repaint();
-			} else {
-				JOptionPane.showMessageDialog(JavaSwingPaintv4.this, "Selectați mai întâi o formă dând click pe ea!");
-			}
+                public void aplicaScalareFormaSelectata(double sx, double sy) {
+                        if (formaSelectata >= 0 && formaSelectata < forme.size()) {
+                                salveazaStarePentruUndo();
+                                forme.get(formaSelectata).aplicaScalare(sx, sy);
+                                repaint();
+                        } else {
+                                JOptionPane.showMessageDialog(JavaSwingPaintv4.this, "Selectați mai întâi o formă dând click pe ea!");
+                        }
 		}
 
-		public void aplicaInclinareFormaSelectata(double shx, double shy) {
-			if (formaSelectata >= 0 && formaSelectata < forme.size()) {
-				forme.get(formaSelectata).aplicaInclinare(shx, shy);
-				repaint();
-			} else {
-				JOptionPane.showMessageDialog(JavaSwingPaintv4.this, "Selectați mai întâi o formă dând click pe ea!");
-			}
+                public void aplicaInclinareFormaSelectata(double shx, double shy) {
+                        if (formaSelectata >= 0 && formaSelectata < forme.size()) {
+                                salveazaStarePentruUndo();
+                                forme.get(formaSelectata).aplicaInclinare(shx, shy);
+                                repaint();
+                        } else {
+                                JOptionPane.showMessageDialog(JavaSwingPaintv4.this, "Selectați mai întâi o formă dând click pe ea!");
+                        }
 		}
 
 		public void aplicaOperatieArie(String operatie) {
@@ -650,27 +941,28 @@ public class JavaSwingPaintv4 extends JFrame {
 				Area area1 = forme.get(a).getArea();
 				Area area2 = forme.get(b).getArea();
 
-				if (area1 != null && area2 != null) {
-					switch (operatie) {
-					case "REUNIUNE":
-						area1.add(area2);
-						break;
-					case "EXTRAGERE":
-						area1.subtract(area2);
-						break; // area1 - area2
-					case "INTERSECTIE":
-						area1.intersect(area2);
-						break;
-					case "XOR":
-						area1.exclusiveOr(area2);
-						break;
-					}
+                                if (area1 != null && area2 != null) {
+                                        switch (operatie) {
+                                        case "REUNIUNE":
+                                                area1.add(area2);
+                                                break;
+                                        case "EXTRAGERE":
+                                                area1.subtract(area2);
+                                                break; // area1 - area2
+                                        case "INTERSECTIE":
+                                                area1.intersect(area2);
+                                                break;
+                                        case "XOR":
+                                                area1.exclusiveOr(area2);
+                                                break;
+                                        }
 
-					Forma formaNoua = new Forma(area1, culoareCurenta, culoareGradient, dash, dashPhase, grosimeLinie,
-							tipUmplere, texturaImagine);
+                                        salveazaStarePentruUndo();
+                                        Forma formaNoua = new Forma(area1, culoareCurenta, culoareGradient, dash, dashPhase, grosimeLinie,
+                                                        tipUmplere, texturaImagine);
 
-					// păstrăm rezultatul în locul PRIMEI forme selectate
-					if (a < b) {
+                                        // păstrăm rezultatul în locul PRIMEI forme selectate
+                                        if (a < b) {
 						forme.set(a, formaNoua);
 						forme.remove(b);
 						formaSelectata = a;
@@ -697,24 +989,25 @@ public class JavaSwingPaintv4 extends JFrame {
 				Area area1 = forma1.getArea();
 				Area area2 = forma2.getArea();
 
-				if (area1 != null && area2 != null) {
-					switch (operatie) {
-					case "REUNIUNE":
-						area1.add(area2);
-						break;
-					case "EXTRAGERE":
-						area1.subtract(area2);
-						break;
-					case "INTERSECTIE":
-						area1.intersect(area2);
-						break;
-					case "XOR":
-						area1.exclusiveOr(area2);
-						break;
-					}
+                                if (area1 != null && area2 != null) {
+                                        switch (operatie) {
+                                        case "REUNIUNE":
+                                                area1.add(area2);
+                                                break;
+                                        case "EXTRAGERE":
+                                                area1.subtract(area2);
+                                                break;
+                                        case "INTERSECTIE":
+                                                area1.intersect(area2);
+                                                break;
+                                        case "XOR":
+                                                area1.exclusiveOr(area2);
+                                                break;
+                                        }
 
-					Forma formaNoua = new Forma(area1, culoareCurenta, culoareGradient, dash, dashPhase, grosimeLinie,
-							tipUmplere, texturaImagine);
+                                        salveazaStarePentruUndo();
+                                        Forma formaNoua = new Forma(area1, culoareCurenta, culoareGradient, dash, dashPhase, grosimeLinie,
+                                                        tipUmplere, texturaImagine);
 					forme.set(formaSelectata, formaNoua);
 					forme.remove(formaSelectata + 1);
 					formaSelectata2 = -1;
@@ -729,15 +1022,16 @@ public class JavaSwingPaintv4 extends JFrame {
 			}
 		}
 
-		private void finalizeazaPoligon() {
-			if (punctePoligon.size() >= 3) {
-				Forma forma = new Forma("POLIGON", culoareCurenta, culoareGradient, punctePoligon, fontCurent, dash,
-						dashPhase, grosimeLinie, tipUmplere, texturaImagine);
-				forme.add(forma);
-			}
-			punctePoligon.clear();
-			repaint();
-		}
+                private void finalizeazaPoligon() {
+                        if (punctePoligon.size() >= 3) {
+                                Forma forma = new Forma("POLIGON", culoareCurenta, culoareGradient, punctePoligon, fontCurent, dash,
+                                                dashPhase, grosimeLinie, tipUmplere, texturaImagine);
+                                salveazaStarePentruUndo();
+                                forme.add(forma);
+                        }
+                        punctePoligon.clear();
+                        repaint();
+                }
 
 		private void selecteazaImagine(Point pozitie) {
 			JFileChooser fileChooser = new JFileChooser();
@@ -750,14 +1044,15 @@ public class JavaSwingPaintv4 extends JFrame {
 			if (result == JFileChooser.APPROVE_OPTION) {
 				File fisier = fileChooser.getSelectedFile();
 				ImageIcon icon = new ImageIcon(fisier.getAbsolutePath());
-				Forma forma = new Forma("IMAGINE", culoareCurenta, culoareGradient, pozitie,
-						new Point(pozitie.x + 100, pozitie.y + 100), null, null, fontCurent, dash, dashPhase,
-						grosimeLinie, tipUmplere, texturaImagine);
-				forma.setImagine(icon.getImage());
-				forme.add(forma);
-				repaint();
-			}
-		}
+                                Forma forma = new Forma("IMAGINE", culoareCurenta, culoareGradient, pozitie,
+                                                new Point(pozitie.x + 100, pozitie.y + 100), null, null, fontCurent, dash, dashPhase,
+                                                grosimeLinie, tipUmplere, texturaImagine);
+                                forma.setImagine(icon.getImage());
+                                salveazaStarePentruUndo();
+                                forme.add(forma);
+                                repaint();
+                        }
+                }
 
 		private void adaugaText(final Point pozitie) {
 			final JDialog dialog = new JDialog(JavaSwingPaintv4.this, "Selectie Font și Text", true);
@@ -793,16 +1088,17 @@ public class JavaSwingPaintv4 extends JFrame {
 				int dimensiune = (Integer) listaDimensiune.getSelectedItem();
 				String text = campText.getText();
 
-				if (text != null && !text.isEmpty()) {
-					Font fontNou = new Font(font, stil, dimensiune);
-					Forma forma = new Forma("TEXT", culoareCurenta, culoareGradient, pozitie, pozitie, null, null,
-							fontNou, dash, dashPhase, grosimeLinie, tipUmplere, texturaImagine);
-					forma.setText(text);
-					forme.add(forma);
-					repaint();
-				}
-				dialog.dispose();
-			});
+                                if (text != null && !text.isEmpty()) {
+                                        Font fontNou = new Font(font, stil, dimensiune);
+                                        Forma forma = new Forma("TEXT", culoareCurenta, culoareGradient, pozitie, pozitie, null, null,
+                                                        fontNou, dash, dashPhase, grosimeLinie, tipUmplere, texturaImagine);
+                                        forma.setText(text);
+                                        salveazaStarePentruUndo();
+                                        forme.add(forma);
+                                        repaint();
+                                }
+                                dialog.dispose();
+                        });
 
 			butonAnuleaza.addActionListener(e -> dialog.dispose());
 
@@ -856,16 +1152,17 @@ public class JavaSwingPaintv4 extends JFrame {
 				int dimensiune = (Integer) listaDimensiune.getSelectedItem();
 				String text = campText.getText();
 
-				if (text != null && !text.isEmpty()) {
-					Font fontNou = new Font(font, stil, dimensiune);
-					Forma forma = new Forma("TEXT_FORMA", culoareCurenta, culoareGradient, pozitie, pozitie, null, null,
-							fontNou, dash, dashPhase, grosimeLinie, tipUmplere, texturaImagine);
-					forma.setText(text);
-					forme.add(forma);
-					repaint();
-				}
-				dialog.dispose();
-			});
+                                if (text != null && !text.isEmpty()) {
+                                        Font fontNou = new Font(font, stil, dimensiune);
+                                        Forma forma = new Forma("TEXT_FORMA", culoareCurenta, culoareGradient, pozitie, pozitie, null, null,
+                                                        fontNou, dash, dashPhase, grosimeLinie, tipUmplere, texturaImagine);
+                                        forma.setText(text);
+                                        salveazaStarePentruUndo();
+                                        forme.add(forma);
+                                        repaint();
+                                }
+                                dialog.dispose();
+                        });
 
 			butonAnuleaza.addActionListener(e -> dialog.dispose());
 
@@ -1012,12 +1309,12 @@ public class JavaSwingPaintv4 extends JFrame {
 		}
 	}
 
-	class Forma {
-		private String tip;
-		private Color culoare, culoareGradient;
-		private Point punct1, punct2, punctControl1, punctControl2;
-		private ArrayList<Point> puncte;
-		private Image imagine;
+        class Forma {
+                private String tip;
+                private Color culoare, culoareGradient;
+                private Point punct1, punct2, punctControl1, punctControl2;
+                private ArrayList<Point> puncte;
+                private Image imagine;
 		private String text;
 		private Font font;
 		private int grosimeLinie, tipUmplere;
@@ -1026,15 +1323,59 @@ public class JavaSwingPaintv4 extends JFrame {
 		private float dashPhase;
 
 		private Image texturaImagine;
-		private Shape shape;
-		private AffineTransform transform;
-		private Area area;
+                private Shape shape;
+                private AffineTransform transform;
+                private Area area;
 
-		public Forma(String tip, Color culoare, Color culoareGradient, Point p1, Point p2, Point pCtrl1, Point pCtrl2,
-				Font font, float[] dash, float dashPhase, int grosimeLinie, int tipUmplere, Image texturaImagine) {
-			this.tip = tip;
-			this.culoare = culoare;
-			this.culoareGradient = culoareGradient;
+                public Forma(Forma other) {
+                        this.tip = other.tip;
+                        this.culoare = other.culoare;
+                        this.culoareGradient = other.culoareGradient;
+                        this.punct1 = other.punct1 != null ? new Point(other.punct1) : null;
+                        this.punct2 = other.punct2 != null ? new Point(other.punct2) : null;
+                        this.punctControl1 = other.punctControl1 != null ? new Point(other.punctControl1) : null;
+                        this.punctControl2 = other.punctControl2 != null ? new Point(other.punctControl2) : null;
+                        if (other.puncte != null) {
+                                this.puncte = new ArrayList<>();
+                                for (Point p : other.puncte) {
+                                        this.puncte.add(new Point(p));
+                                }
+                        } else {
+                                this.puncte = null;
+                        }
+                        this.imagine = other.imagine;
+                        this.text = other.text;
+                        this.font = other.font;
+                        this.grosimeLinie = other.grosimeLinie;
+                        this.tipUmplere = other.tipUmplere;
+                        this.dash = other.dash != null ? other.dash.clone() : null;
+                        this.dashPhase = other.dashPhase;
+                        this.texturaImagine = other.texturaImagine;
+                        this.transform = new AffineTransform(other.transform);
+                        this.area = other.area != null ? (Area) other.area.clone() : null;
+
+                        if ("AREA".equals(this.tip)) {
+                                this.shape = this.area != null ? new Area(this.area) : null;
+                        } else {
+                                this.shape = null;
+                                creeazaShape();
+                                if ("IMAGINE".equals(this.tip)) {
+                                        setImagine(this.imagine);
+                                }
+                                if ("TEXT".equals(this.tip) || "TEXT_FORMA".equals(this.tip)) {
+                                        setText(this.text);
+                                }
+                                if (this.area == null && other.area != null) {
+                                        this.area = (Area) other.area.clone();
+                                }
+                        }
+                }
+
+                public Forma(String tip, Color culoare, Color culoareGradient, Point p1, Point p2, Point pCtrl1, Point pCtrl2,
+                                Font font, float[] dash, float dashPhase, int grosimeLinie, int tipUmplere, Image texturaImagine) {
+                        this.tip = tip;
+                        this.culoare = culoare;
+                        this.culoareGradient = culoareGradient;
 			this.punct1 = p1;
 			this.punct2 = p2;
 			this.punctControl1 = pCtrl1;
@@ -1054,8 +1395,8 @@ public class JavaSwingPaintv4 extends JFrame {
 			creeazaShape();
 		}
 
-		public Forma(String tip, Color culoare, Color culoareGradient, ArrayList<Point> puncte, Font font, float[] dash,
-				float dashPhase, int grosimeLinie, int tipUmplere, Image texturaImagine) {
+                public Forma(String tip, Color culoare, Color culoareGradient, ArrayList<Point> puncte, Font font, float[] dash,
+                                float dashPhase, int grosimeLinie, int tipUmplere, Image texturaImagine) {
 			this.tip = tip;
 			this.culoare = culoare;
 			this.culoareGradient = culoareGradient;
@@ -1077,9 +1418,9 @@ public class JavaSwingPaintv4 extends JFrame {
 		}
 
 		// Constructor pentru Area compusă
-		public Forma(Area area, Color culoare, Color culoareGradient, float[] dash, float dashPhase, int grosimeLinie,
-				int tipUmplere, Image texturaImagine) {
-			this.tip = "AREA";
+                public Forma(Area area, Color culoare, Color culoareGradient, float[] dash, float dashPhase, int grosimeLinie,
+                                int tipUmplere, Image texturaImagine) {
+                        this.tip = "AREA";
 			this.culoare = culoare;
 			this.culoareGradient = culoareGradient;
 			this.area = area;
@@ -1094,7 +1435,55 @@ public class JavaSwingPaintv4 extends JFrame {
 			this.transform = new AffineTransform();
 		}
 
-		private void creeazaShape() {
+                public Forma(FormaSerializata serializata) throws IOException {
+                        this.tip = serializata.tip;
+                        this.culoare = serializata.culoare;
+                        this.culoareGradient = serializata.culoareGradient;
+                        this.punct1 = serializata.punct1 != null ? new Point(serializata.punct1) : null;
+                        this.punct2 = serializata.punct2 != null ? new Point(serializata.punct2) : null;
+                        this.punctControl1 = serializata.punctControl1 != null ? new Point(serializata.punctControl1) : null;
+                        this.punctControl2 = serializata.punctControl2 != null ? new Point(serializata.punctControl2) : null;
+                        if (serializata.puncte != null) {
+                                this.puncte = new ArrayList<>();
+                                for (Point p : serializata.puncte) {
+                                        this.puncte.add(new Point(p));
+                                }
+                        }
+                        this.font = serializata.font;
+                        this.dash = serializata.dash != null ? serializata.dash.clone() : null;
+                        this.dashPhase = serializata.dashPhase;
+                        this.grosimeLinie = serializata.grosimeLinie;
+                        this.tipUmplere = serializata.tipUmplere;
+                        this.transform = serializata.transform != null ? new AffineTransform(serializata.transform)
+                                        : new AffineTransform();
+                        this.text = serializata.text;
+                        this.texturaImagine = imagineDinOcteti(serializata.texturaImagine);
+
+                        if ("AREA".equals(this.tip)) {
+                                Path2D.Double path = serializata.areaPath;
+                                if (path != null) {
+                                        this.area = new Area(path);
+                                        this.shape = path;
+                                }
+                        } else {
+                                creeazaShape();
+                        }
+
+                        if ("IMAGINE".equals(this.tip)) {
+                                Image img = imagineDinOcteti(serializata.imagine);
+                                if (img != null) {
+                                        setImagine(img);
+                                }
+                        } else {
+                                this.imagine = null;
+                        }
+
+                        if (this.text != null && ("TEXT".equals(this.tip) || "TEXT_FORMA".equals(this.tip))) {
+                                setText(this.text);
+                        }
+                }
+
+                private void creeazaShape() {
 			if (puncte != null) {
 				// Creează poligon
 				GeneralPath path = new GeneralPath();
@@ -1170,6 +1559,32 @@ public class JavaSwingPaintv4 extends JFrame {
 			}
 		}
 
+
+		public void setCuloare(Color culoare) {
+			this.culoare = culoare;
+		}
+
+		public void setCuloareGradient(Color culoareGradient) {
+			this.culoareGradient = culoareGradient;
+		}
+
+		public void setGrosimeLinie(int grosimeLinie) {
+			this.grosimeLinie = grosimeLinie;
+		}
+
+		public void setTipUmplere(int tipUmplere) {
+			this.tipUmplere = tipUmplere;
+		}
+
+		public void setDashPattern(float[] dash, float dashPhase) {
+			this.dash = dash != null ? dash.clone() : null;
+			this.dashPhase = dashPhase;
+		}
+
+		public void setTexturaImagine(Image texturaImagine) {
+			this.texturaImagine = texturaImagine;
+		}
+
 		public void setImagine(Image imagine) {
 			this.imagine = imagine;
 
@@ -1196,22 +1611,122 @@ public class JavaSwingPaintv4 extends JFrame {
 			// <<< adaugă
 		}
 
-		public void setText(String text) {
-			this.text = text;
-			if (tip.equals("TEXT_FORMA") && font != null) {
-				// Creează shape din text
-				FontRenderContext frc = new FontRenderContext(null, true, true);
-				TextLayout layout = new TextLayout(text, font, frc);
-				AffineTransform at = new AffineTransform();
-				at.translate(punct1.x, punct1.y + layout.getBounds().getHeight());
-				shape = layout.getOutline(at);
-				area = new Area(shape);
-			}
-		}
+                public void setText(String text) {
+                        this.text = text;
+                        if (tip.equals("TEXT_FORMA") && font != null) {
+                                // Creează shape din text
+                                FontRenderContext frc = new FontRenderContext(null, true, true);
+                                TextLayout layout = new TextLayout(text, font, frc);
+                                AffineTransform at = new AffineTransform();
+                                at.translate(punct1.x, punct1.y + layout.getBounds().getHeight());
+                                shape = layout.getOutline(at);
+                                area = new Area(shape);
+                        }
+                }
 
-		public boolean contine(Point p) {
-			if (shape != null) {
-				Shape transformedShape = transform.createTransformedShape(shape);
+                public FormaSerializata toSerializat() throws IOException {
+                        FormaSerializata serializata = new FormaSerializata();
+                        serializata.tip = this.tip;
+                        serializata.culoare = this.culoare;
+                        serializata.culoareGradient = this.culoareGradient;
+                        serializata.punct1 = this.punct1 != null ? new Point(this.punct1) : null;
+                        serializata.punct2 = this.punct2 != null ? new Point(this.punct2) : null;
+                        serializata.punctControl1 = this.punctControl1 != null ? new Point(this.punctControl1) : null;
+                        serializata.punctControl2 = this.punctControl2 != null ? new Point(this.punctControl2) : null;
+                        if (this.puncte != null) {
+                                serializata.puncte = new ArrayList<>();
+                                for (Point p : this.puncte) {
+                                        serializata.puncte.add(new Point(p));
+                                }
+                        }
+                        serializata.font = this.font;
+                        serializata.dash = this.dash != null ? this.dash.clone() : null;
+                        serializata.dashPhase = this.dashPhase;
+                        serializata.grosimeLinie = this.grosimeLinie;
+                        serializata.tipUmplere = this.tipUmplere;
+                        serializata.transform = new AffineTransform(this.transform);
+                        serializata.text = this.text;
+                        serializata.texturaImagine = imagineInOcteti(this.texturaImagine);
+                        serializata.imagine = imagineInOcteti(this.imagine);
+                        if ("AREA".equals(this.tip) && this.area != null) {
+                                serializata.areaPath = creeazaPathDinShape(this.area);
+                        }
+                        return serializata;
+                }
+
+                private Path2D.Double creeazaPathDinShape(Shape forma) {
+                        if (forma == null) {
+                                return null;
+                        }
+                        PathIterator iterator = forma.getPathIterator(null);
+                        Path2D.Double path = new Path2D.Double();
+                        double[] coords = new double[6];
+                        while (!iterator.isDone()) {
+                                switch (iterator.currentSegment(coords)) {
+                                case PathIterator.SEG_MOVETO:
+                                        path.moveTo(coords[0], coords[1]);
+                                        break;
+                                case PathIterator.SEG_LINETO:
+                                        path.lineTo(coords[0], coords[1]);
+                                        break;
+                                case PathIterator.SEG_QUADTO:
+                                        path.quadTo(coords[0], coords[1], coords[2], coords[3]);
+                                        break;
+                                case PathIterator.SEG_CUBICTO:
+                                        path.curveTo(coords[0], coords[1], coords[2], coords[3], coords[4], coords[5]);
+                                        break;
+                                case PathIterator.SEG_CLOSE:
+                                        path.closePath();
+                                        break;
+                                }
+                                iterator.next();
+                        }
+                        return path;
+                }
+
+                private byte[] imagineInOcteti(Image image) throws IOException {
+                        if (image == null) {
+                                return null;
+                        }
+                        BufferedImage buffered = asBufferedImage(image);
+                        if (buffered == null) {
+                                return null;
+                        }
+                        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                        ImageIO.write(buffered, "png", baos);
+                        return baos.toByteArray();
+                }
+
+                private BufferedImage asBufferedImage(Image image) {
+                        if (image == null) {
+                                return null;
+                        }
+                        if (image instanceof BufferedImage) {
+                                return (BufferedImage) image;
+                        }
+                        int width = image.getWidth(null);
+                        int height = image.getHeight(null);
+                        if (width <= 0 || height <= 0) {
+                                return null;
+                        }
+                        BufferedImage bufferedImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+                        Graphics2D g2 = bufferedImage.createGraphics();
+                        g2.drawImage(image, 0, 0, null);
+                        g2.dispose();
+                        return bufferedImage;
+                }
+
+                private Image imagineDinOcteti(byte[] data) throws IOException {
+                        if (data == null || data.length == 0) {
+                                return null;
+                        }
+                        ByteArrayInputStream bais = new ByteArrayInputStream(data);
+                        return ImageIO.read(bais);
+                }
+
+                public boolean contine(Point p) {
+                        if (shape != null) {
+                                Shape transformedShape = transform.createTransformedShape(shape);
 				if (transformedShape != null) {
 					return transformedShape.contains(p);
 				}
@@ -1383,11 +1898,69 @@ public class JavaSwingPaintv4 extends JFrame {
 		}
 	}
 
-	public static void main(String[] args) {
-		SwingUtilities.invokeLater(new Runnable() {
-			public void run() {
-				new JavaSwingPaintv4();
-			}
-		});
-	}
+        public static void main(String[] args) {
+                SwingUtilities.invokeLater(new Runnable() {
+                        public void run() {
+                                new JavaSwingPaintv4();
+                        }
+                });
+        }
+
+        private static class DesenSerializat implements Serializable {
+                private static final long serialVersionUID = 1L;
+
+                private ArrayList<FormaSerializata> forme;
+                private RectangleData zonaDecupare;
+        }
+
+        private static class RectangleData implements Serializable {
+                private static final long serialVersionUID = 1L;
+
+                private double x;
+                private double y;
+                private double latime;
+                private double inaltime;
+
+                private RectangleData(double x, double y, double latime, double inaltime) {
+                        this.x = x;
+                        this.y = y;
+                        this.latime = latime;
+                        this.inaltime = inaltime;
+                }
+
+                private static RectangleData fromShape(Shape shape) {
+                        if (shape instanceof Rectangle2D) {
+                                Rectangle2D rect = (Rectangle2D) shape;
+                                return new RectangleData(rect.getX(), rect.getY(), rect.getWidth(), rect.getHeight());
+                        }
+                        return null;
+                }
+
+                private Shape toShape() {
+                        return new Rectangle2D.Double(x, y, latime, inaltime);
+                }
+        }
+
+        private static class FormaSerializata implements Serializable {
+                private static final long serialVersionUID = 1L;
+
+                private String tip;
+                private Color culoare;
+                private Color culoareGradient;
+                private Point punct1;
+                private Point punct2;
+                private Point punctControl1;
+                private Point punctControl2;
+                private ArrayList<Point> puncte;
+                private String text;
+                private Font font;
+                private int grosimeLinie;
+                private int tipUmplere;
+                private float[] dash;
+                private float dashPhase;
+                private AffineTransform transform;
+                private byte[] imagine;
+                private byte[] texturaImagine;
+                private Path2D.Double areaPath;
+        }
 }
